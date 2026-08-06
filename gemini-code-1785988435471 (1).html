@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 묘지 방탈출 (정면 3인칭/1인칭)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; color: #fff; font-family: sans-serif; user-select: none; }
+        
+        /* 시작 화면 UI */
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #222 0%, #000 100%); z-index: 100;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .title-container { position: relative; margin-bottom: 200px; }
+        .title {
+            font-family: '굴림체', 'Gulim', sans-serif; font-size: 120px; font-weight: bold;
+            color: #d00; text-shadow: 0 0 20px #a00, 5px 5px 0 #300; margin: 0; position: relative;
+        }
+        .blood {
+            position: absolute; bottom: 10px; width: 10px; height: 0px; background: #d00;
+            border-radius: 5px; box-shadow: 0 0 5px #a00; animation: drip 2.5s infinite ease-in;
+        }
+        .blood.left { left: 10px; } .blood.right { right: 10px; animation-delay: 1.2s; }
+        @keyframes drip {
+            0% { height: 0px; opacity: 1; bottom: 10px; }
+            60% { height: 80px; opacity: 1; bottom: -70px; }
+            100% { height: 90px; opacity: 0; bottom: -80px; }
+        }
+        #start-btn {
+            font-size: 32px; padding: 15px 60px; background: #800; color: #fff;
+            border: 3px solid #f00; border-radius: 10px; cursor: pointer; transition: 0.3s;
+            font-weight: bold; text-shadow: 2px 2px 5px #000; box-shadow: 0 0 20px #f00;
+        }
+        #start-btn:hover { background: #a00; box-shadow: 0 0 30px #f55; transform: scale(1.05); }
+        #start-btn.loading { background: #444; border-color: #777; box-shadow: none; cursor: not-allowed; transform: scale(1); color: #aaa; }
+
+        /* 사망 화면 UI */
+        #death-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 200; display: none; flex-direction: column; 
+            justify-content: center; align-items: center; opacity: 0; transition: opacity 2s;
+        }
+        #death-text {
+            font-family: '굴림체', 'Gulim', sans-serif; font-size: 100px; font-weight: bold;
+            color: #f00; text-shadow: 0 0 20px #a00, 5px 5px 0 #300; margin-bottom: 80px;
+            display: none;
+        }
+        #restart-btn {
+            font-size: 30px; padding: 15px 50px; background: #113; color: #68f;
+            border: 3px solid #46a; border-radius: 10px; cursor: pointer; transition: 0.3s;
+            font-weight: bold; display: none;
+        }
+        #restart-btn:hover { background: #225; color: #8af; box-shadow: 0 0 20px #46a; }
+
+        /* 인게임 UI */
+        #game-ui { display: none; }
+        #hp-container {
+            position: absolute; top: 20px; left: 20px; width: 250px; height: 25px;
+            background: #222; border: 2px solid #555; border-radius: 5px; overflow: hidden; z-index: 10;
+        }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0000, #ff4444); transition: width 0.2s; }
+        #hp-text {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            text-align: center; line-height: 25px; font-weight: bold; font-size: 16px; text-shadow: 1px 1px 2px #000;
+        }
+        #instructions { 
+            position: absolute; top: 60px; left: 20px; background: rgba(0,0,0,0.6); padding: 12px; 
+            border-radius: 8px; z-index: 10; font-size: 13px; color: #ddd; line-height: 1.5;
+        }
+        .highlight { color: #ffd700; font-weight: bold; }
+        #hotbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10; }
+        .slot {
+            width: 50px; height: 50px; background: rgba(30,30,30,0.8); border: 2px solid #555;
+            border-radius: 5px; position: relative; display: flex; justify-content: center; align-items: center;
+        }
+        .slot-num { position: absolute; top: 2px; left: 4px; font-size: 12px; color: #888; font-weight: bold; }
+
+        /* 아이템 CSS */
+        .item-holywater { width: 18px; height: 28px; background: rgba(255, 255, 100, 0.4); border: 2px solid rgba(255, 255, 150, 0.8); border-radius: 8px 8px 3px 3px; position: relative; }
+        .item-holywater::before { content: ''; position: absolute; top: -6px; left: 4px; width: 6px; height: 6px; background: rgba(255, 255, 150, 0.8); }
+        .item-cross { width: 24px; height: 34px; position: relative; }
+        .item-cross::before { content: ''; position: absolute; top: 0; left: 9px; width: 6px; height: 34px; background: #ddd; }
+        .item-cross::after { content: ''; position: absolute; top: 10px; left: 0; width: 24px; height: 6px; background: #ddd; }
+        .item-flashlight { width: 30px; height: 12px; background: #666; border-radius: 2px; position: relative; }
+        .item-flashlight::after { content: ''; position: absolute; right: -4px; top: -2px; width: 6px; height: 16px; background: #999; }
+        .item-flashlight.on::after { background: #fff; box-shadow: 15px 0 15px 5px rgba(255, 255, 200, 0.8); }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 4px; height: 4px; background: white; border-radius: 50%; z-index: 10; display: none;
+        }
+
+        /* 설정 UI CSS */
+        #settings-btn { 
+            position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; 
+            background: rgba(0,0,0,0.6); border: 2px solid #555; border-radius: 5px; 
+            cursor: pointer; display: flex; justify-content: center; align-items: center; 
+            font-size: 24px; z-index: 300; box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        #settings-menu { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: 400px; max-height: 80vh; overflow-y: auto; background: rgba(20,20,20,0.95); 
+            border: 2px solid #777; border-radius: 10px; padding: 20px; z-index: 310; 
+            display: none; flex-direction: column; gap: 12px;
+        }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #333; }
+        .setting-controls { display: flex; gap: 8px; align-items: center; }
+        input[type=range] { width: 100px; }
+        input[type=number] { width: 45px; background: #333; color: white; border: 1px solid #555; text-align: center; }
+        .key-btn { background: #444; color: #fff; padding: 5px 10px; border-radius: 3px; cursor: pointer; min-width: 80px; text-align: center; font-size: 12px; }
+        .key-btn.active { background: #862; border-color: #f80; }
+        .close-btn { background: #822; margin-top: 10px; padding: 10px; text-align: center; cursor: pointer; border-radius: 5px; font-weight: bold; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <!-- 설정 버튼 (메인 및 인게임 공통) -->
+    <div id="settings-btn">⚙️</div>
+
+    <!-- 시작 화면 -->
+    <div id="start-screen">
+        <div class="title-container">
+            <h1 class="title">Hollow Days</h1>
+            <div class="blood left"></div>
+            <div class="blood right"></div>
+        </div>
+        <button id="start-btn">실 행</button>
+    </div>
+
+    <!-- 사망 및 재시작 화면 -->
+    <div id="death-screen">
+        <div id="death-text">You Died</div>
+        <button id="restart-btn">재시작</button>
+    </div>
+
+    <!-- 인게임 요소들 -->
+    <div id="game-ui">
+        <div id="hp-container"><div id="hp-bar"></div><div id="hp-text">100 / 100</div></div>
+        <div id="instructions">
+            설정(⚙️) 메뉴에서 키 및 <b>그래픽 퀄리티</b>를 변경할 수 있습니다.<br>
+            <span class="highlight">기본값:</span> 마우스 고정(Shift/클릭), 고정 해제(Shift 연속 2번 누르기)<br>
+            이동(WASD), 점프(Space), 구르기(Q), 파기(F), 시점전환(V), 아이템(1~9)
+        </div>
+        <div id="hotbar"></div>
+        <div id="crosshair"></div>
+    </div>
+
+    <!-- 설정 메뉴 -->
+    <div id="settings-menu">
+        <h3 style="margin:0 0 10px 0; text-align:center; color:#ffd700;">환경 설정</h3>
+        <div class="setting-row">
+            <label>그래픽 품질</label>
+            <div class="setting-controls"><div id="quality-btn" class="key-btn active" style="min-width: 100px;">높음 (High)</div></div>
+        </div>
+        <div class="setting-row">
+            <label>게임 밝기</label>
+            <div class="setting-controls">
+                <input type="range" id="bright-slide" min="0" max="100" value="50">
+                <input type="number" id="bright-num" min="0" max="100" value="50">
+            </div>
+        </div>
+        <div class="setting-row">
+            <label>마우스 감도</label>
+            <div class="setting-controls">
+                <input type="range" id="sens-slide" min="0" max="100" value="50">
+                <input type="number" id="sens-num" min="0" max="100" value="50">
+            </div>
+        </div>
+        <div class="setting-row"><label>앞으로 이동</label><div class="key-btn bindable" data-key="forward">KeyW</div></div>
+        <div class="setting-row"><label>뒤로 이동</label><div class="key-btn bindable" data-key="backward">KeyS</div></div>
+        <div class="setting-row"><label>왼쪽 이동</label><div class="key-btn bindable" data-key="left">KeyA</div></div>
+        <div class="setting-row"><label>오른쪽 이동</label><div class="key-btn bindable" data-key="right">KeyD</div></div>
+        <div class="setting-row"><label>시점 고정</label><div class="key-btn bindable" data-key="pointer">ShiftLeft</div></div>
+        <div class="setting-row"><label>점프</label><div class="key-btn bindable" data-key="jump">Space</div></div>
+        <div class="setting-row"><label>앞구르기</label><div class="key-btn bindable" data-key="roll">KeyQ</div></div>
+        <div class="setting-row"><label>시점 전환</label><div class="key-btn bindable" data-key="view">KeyV</div></div>
+        <div class="setting-row"><label>묘비 파기</label><div class="key-btn bindable" data-key="dig">KeyF</div></div>
+        <div class="close-btn" id="close-settings">설정 닫기</div>
+    </div>
+
+<script>
+    // --- 시스템 상태 변수 ---
+    let gameStarted = false;
+    let isDead = false;
+    const keyBinds = { forward: 'KeyW', backward: 'KeyS', left: 'KeyA', right: 'KeyD', pointer: 'ShiftLeft', jump: 'Space', roll: 'KeyQ', view: 'KeyV', dig: 'KeyF' };
+    let currentSensitivity = 0.0022; 
+    let isSettingsOpen = false;
+    let isHighQuality = true; 
+
+    // --- 0. 절차적 텍스처 생성 ---
+    function createNoiseTexture(baseColor, noiseColor, size = 512, repeats = 1, dense = false) {
+        const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d'); ctx.fillStyle = baseColor; ctx.fillRect(0, 0, size, size);
+        let count = dense ? (size * size / 2) : (size * size / 10);
+        for(let i = 0; i < count; i++) { ctx.fillStyle = noiseColor; ctx.fillRect(Math.random() * size, Math.random() * size, 2, 2); }
+        const tex = new THREE.CanvasTexture(canvas); tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(repeats, repeats);
+        return tex;
+    }
+    const highFloorTex = createNoiseTexture('#1a2421', '#111815', 1024, 60, true);
+    const highGraveTex = createNoiseTexture('#444444', '#2b2b2b', 512, 2, true);
+
+    // --- 1. 3D 씬 및 조명 설정 ---
+    const scene = new THREE.Scene();
+    const nightColor = 0x1a2233;
+    scene.background = new THREE.Color(nightColor);
+    scene.fog = new THREE.FogExp2(nightColor, 0.0012); 
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+    camera.position.set(0, 1000, 2000); camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xaab4ff, 0.5); scene.add(ambientLight);
+    const moonLight = new THREE.DirectionalLight(0xcdd8ff, 0.6);
+    moonLight.position.set(1000, 1500, -1000); moonLight.castShadow = true; scene.add(moonLight);
+
+    const moonGroup = new THREE.Group(); moonGroup.position.set(1000, 1500, -1000); scene.add(moonGroup);
+    const moonLow = new THREE.Mesh(new THREE.SphereGeometry(120, 8, 8), new THREE.MeshBasicMaterial({ color: 0xdddddd }));
+    const moonHigh = new THREE.Mesh(new THREE.SphereGeometry(120, 64, 64), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x222244 }));
+    const moonGlow = new THREE.Mesh(new THREE.SphereGeometry(140, 32, 32), new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.15 }));
+    moonGroup.add(moonLow, moonHigh, moonGlow);
+
+    const dustGeo = new THREE.BufferGeometry(); const dustCount = 2000; const dustPos = new Float32Array(dustCount * 3);
+    for(let i=0; i<dustCount; i++) { dustPos[i*3] = (Math.random() - 0.5) * 5000; dustPos[i*3+1] = Math.random() * 500; dustPos[i*3+2] = (Math.random() - 0.5) * 5000; }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustParticles = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x88aaff, size: 4, transparent: true, opacity: 0.4 }));
+    scene.add(dustParticles);
+
+    const starGeo = new THREE.BufferGeometry(); const starCount = 8000; const starPos = new Float32Array(starCount * 3);
+    for(let i = 0; i < starCount; i++) { starPos[i * 3] = (Math.random() - 0.5) * 10000; starPos[i * 3 + 1] = Math.random() * 4000 + 500; starPos[i * 3 + 2] = (Math.random() - 0.5) * 10000; }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 5, transparent: true, opacity: 0.8 });
+    const stars = new THREE.Points(starGeo, starMat); scene.add(stars);
+
+    const floorGeo = new THREE.PlaneGeometry(5000, 5000);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a2421, roughness: 0.9 });
+    const floor = new THREE.Mesh(floorGeo, floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+    // --- 3. 캐릭터 생성 함수 (네모 모형 복원) ---
+    function createHumanoid(scheme) {
+        const group = new THREE.Group();
+        const legW = 22, legD = 22, legH = 65, torsoW = 50, torsoD = 25, torsoH = 65, armW = 18, armD = 22, armH = 60, headSize = 40;
+
+        const legMat = new THREE.MeshStandardMaterial({ color: scheme.leg, roughness: 0.8 });
+        const torsoMat = new THREE.MeshStandardMaterial({ color: scheme.torso, roughness: 0.8 });
+        const armMat = new THREE.MeshStandardMaterial({ color: scheme.arm, roughness: 0.8 });
+        const headMat = new THREE.MeshStandardMaterial({ color: scheme.head, roughness: 0.8 });
+
+        const boxGeo = {
+            leg: new THREE.BoxGeometry(legW, legH, legD), torso: new THREE.BoxGeometry(torsoW, torsoH, torsoD),
+            arm: new THREE.BoxGeometry(armW, armH, armD), head: new THREE.BoxGeometry(headSize, headSize, headSize)
+        };
+
+        function createPart(geo, mat, posY, parent) {
+            const mesh = new THREE.Mesh(geo, mat); mesh.position.y = posY;
+            mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh);
+            return mesh;
+        }
+
+        const leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-13, legH, 0);
+        const rightLegPivot = new THREE.Group(); rightLegPivot.position.set(13, legH, 0);
+        const leftArmPivot = new THREE.Group(); leftArmPivot.position.set(-(torsoW / 2 + armW / 2), legH + torsoH, 0);
+        const rightArmPivot = new THREE.Group(); rightArmPivot.position.set(torsoW / 2 + armW / 2, legH + torsoH, 0);
+        const torsoPivot = new THREE.Group(); torsoPivot.position.set(0, legH + torsoH / 2, 0);
+        const headPivot = new THREE.Group(); headPivot.position.set(0, legH + torsoH + headSize / 2, 0);
+
+        createPart(boxGeo.leg, legMat, -legH / 2, leftLegPivot);
+        createPart(boxGeo.leg, legMat, -legH / 2, rightLegPivot);
+        createPart(boxGeo.arm, armMat, -armH / 2, leftArmPivot);
+        createPart(boxGeo.arm, armMat, -armH / 2, rightArmPivot);
+        createPart(boxGeo.torso, torsoMat, 0, torsoPivot);
+        createPart(boxGeo.head, headMat, 0, headPivot);
+
+        const featureMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+        const leftEye = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 2), featureMat); leftEye.position.set(-8, 5, -(headSize / 2 + 1));
+        const rightEye = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 2), featureMat); rightEye.position.set(8, 5, -(headSize / 2 + 1));
+        const mouth = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 2), featureMat); mouth.position.set(0, -8, -(headSize / 2 + 1));
+        headPivot.add(leftEye, rightEye, mouth);
+
+        group.add(leftLegPivot, rightLegPivot, torsoPivot, leftArmPivot, rightArmPivot, headPivot);
+        return { group, leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, torsoPivot, headPivot };
+    }
+
+    // --- 4. 플레이어 설정 ---
+    const player = { hp: 100, maxHp: 100, flashlightOn: false, crossActiveTimer: 0, walkT: 0, velocityY: 0, isJumping: false, isRolling: false, rollTimer: 0 };
+    const playerGroup = new THREE.Group(); scene.add(playerGroup);
+    const playerBody = createHumanoid({ head: 0xF3C88D, torso: 0x00A2FF, arm: 0xF3C88D, leg: 0x156B1D });
+    playerGroup.add(playerBody.group);
+
+    const flashLight = new THREE.SpotLight(0xfffff0, 3.0, 6000, Math.PI / 4, 0.5, 1);
+    flashLight.position.set(0, 160, 0); flashLight.target.position.set(0, 160, -1); 
+    flashLight.visible = false; playerGroup.add(flashLight); playerGroup.add(flashLight.target);
+
+    const crossAura = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffee, transparent: true, opacity: 0.25 }));
+    crossAura.position.y = 85; crossAura.visible = false; playerGroup.add(crossAura);
+    let holyWaterEffects = [];
+
+    // --- 5. 인벤토리 및 무덤/좀비 오브젝트 ---
+    const inventory = new Array(9).fill(null);
+    const graves = []; const gravesMaterials = []; const graveBases = []; const zombies = [];
+
+    function renderHotbar() {
+        const hotbarDiv = document.getElementById("hotbar"); hotbarDiv.innerHTML = '';
+        for (let i = 0; i < 9; i++) {
+            const slot = document.createElement("div"); slot.className = "slot"; slot.innerHTML = `<div class="slot-num">${i + 1}</div>`;
+            if (inventory[i]) {
+                const icon = document.createElement("div");
+                if (inventory[i] === "flashlight") icon.className = "item-flashlight" + (player.flashlightOn ? " on" : "");
+                else if (inventory[i] === "holyWater") icon.className = "item-holywater";
+                else if (inventory[i] === "cross") icon.className = "item-cross";
+                slot.appendChild(icon);
+            }
+            hotbarDiv.appendChild(slot);
+        }
+    }
+    renderHotbar();
+    function addItem(type) { for (let i = 0; i < 9; i++) if (inventory[i] === null) { inventory[i] = type; renderHotbar(); return true; } return false; }
+
+    function generateGraves() {
+        let contents = ["escape", "flashlight", "holyWater", "holyWater", "holyWater", "cross", "cross"];
+        while(contents.length < 30) contents.push("empty"); contents.sort(() => Math.random() - 0.5);
+        for (let i = 0; i < 30; i++) {
+            const gGroup = new THREE.Group();
+            const gMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8 }); gravesMaterials.push(gMat);
+            
+            // 크기 1.2배 재조정
+            const gMesh = new THREE.Mesh(new THREE.BoxGeometry(120, 60, 240), gMat);
+            gMesh.position.y = 30; gMesh.castShadow = true; gMesh.receiveShadow = true; gGroup.add(gMesh);
+            
+            const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(140, 10, 260), gMat);
+            baseMesh.position.y = 5; baseMesh.castShadow = true; baseMesh.receiveShadow = true; 
+            gGroup.add(baseMesh); graveBases.push(baseMesh);
+
+            const cMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+            const crossV = new THREE.Mesh(new THREE.BoxGeometry(24, 144, 12), cMat); crossV.position.set(0, 120, -96);
+            const crossH = new THREE.Mesh(new THREE.BoxGeometry(96, 24, 12), cMat); crossH.position.set(0, 144, -96);
+            crossV.castShadow = true; crossH.castShadow = true; gGroup.add(crossV, crossH);
+            
+            gGroup.position.set(Math.random() * 4800 - 2400, 0, Math.random() * 4800 - 2400); scene.add(gGroup);
+            graves.push({ obj: gGroup, content: contents[i], dug: false, mesh: gMesh });
+        }
+    }
+
+    function spawnZombies(count) {
+        for (let i = 0; i < count; i++) {
+            const zBody = createHumanoid({ head: 0x5E7350, torso: 0x3B3B3B, arm: 0x5E7350, leg: 0x2A2A2A });
+            let spawnPos = { x: 0, z: 0 };
+            if (graves.length > 0) {
+                const targetGrave = graves[Math.floor(Math.random() * graves.length)];
+                spawnPos.x = targetGrave.obj.position.x; spawnPos.z = targetGrave.obj.position.z;
+            } else {
+                spawnPos.x = Math.random() * 4800 - 2400; spawnPos.z = Math.random() * 4800 - 2400;
+            }
+            zBody.group.position.set(spawnPos.x, -100, spawnPos.z); scene.add(zBody.group);
+            zombies.push({ obj: zBody.group, hp: 75, ...zBody, walkT: Math.random() * 10, state: 'emerging' });
+        }
+    }
+
+    // --- 6. 퀄리티 설정 (빛, 그림자, 파티클만 제어) ---
+    function applyQualitySettings() {
+        if (isHighQuality) {
+            renderer.setPixelRatio(window.devicePixelRatio); renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            moonLight.shadow.mapSize.width = 2048; moonLight.shadow.mapSize.height = 2048;
+            floorMat.map = highFloorTex; gravesMaterials.forEach(mat => { mat.map = highGraveTex; mat.needsUpdate = true; });
+            graveBases.forEach(b => b.visible = true);
+            moonLow.visible = false; moonHigh.visible = true; moonGlow.visible = true;
+            dustParticles.visible = true; starMat.blending = THREE.AdditiveBlending;
+        } else {
+            renderer.setPixelRatio(0.7); renderer.shadowMap.type = THREE.BasicShadowMap;
+            moonLight.shadow.mapSize.width = 512; moonLight.shadow.mapSize.height = 512;
+            floorMat.map = null; gravesMaterials.forEach(mat => { mat.map = null; mat.needsUpdate = true; });
+            graveBases.forEach(b => b.visible = false);
+            moonLow.visible = true; moonHigh.visible = false; moonGlow.visible = false;
+            dustParticles.visible = false; starMat.blending = THREE.NormalBlending;
+        }
+        floorMat.needsUpdate = true;
+        scene.traverse(child => { if (child.isMesh && child.material) child.material.needsUpdate = true; });
+    }
+
+    // --- 7. 시작 및 설정 로직 ---
+    document.getElementById('start-btn').addEventListener('click', function() {
+        this.innerText = "로딩 중..."; this.classList.add("loading");
+        setTimeout(() => {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('crosshair').style.display = 'block';
+            
+            cameraMode = "third"; gameStarted = true;
+            spawnZombies(12); document.body.requestPointerLock();
+        }, 1500);
+    });
+
+    const keys = {}; let cameraMode = "third", cameraYaw = 0, cameraPitch = 0.35;
+    const requestPointer = () => { if(gameStarted && !isDead) document.body.requestPointerLock(); };
+    let lastPointerKeyTime = 0; 
+    
+    document.getElementById('settings-btn').addEventListener('click', (e) => { e.stopPropagation(); isSettingsOpen = true; document.getElementById('settings-menu').style.display = 'flex'; document.exitPointerLock(); });
+    document.getElementById('close-settings').addEventListener('click', () => { isSettingsOpen = false; document.getElementById('settings-menu').style.display = 'none'; requestPointer(); });
+    
+    const qualityBtn = document.getElementById('quality-btn');
+    qualityBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); isHighQuality = !isHighQuality;
+        qualityBtn.innerText = isHighQuality ? "높음 (High)" : "낮음 (Low)";
+        if (isHighQuality) { qualityBtn.classList.add('active'); qualityBtn.style.background = "#862"; qualityBtn.style.borderColor = "#f80"; } 
+        else { qualityBtn.classList.remove('active'); qualityBtn.style.background = "#444"; qualityBtn.style.borderColor = "#666"; }
+        applyQualitySettings();
+    });
+
+    const brightSlide = document.getElementById('bright-slide'); const brightNum = document.getElementById('bright-num');
+    const sensSlide = document.getElementById('sens-slide'); const sensNum = document.getElementById('sens-num');
+    function updateBrightness(val) { val = Math.max(0, Math.min(100, val)); brightSlide.value = val; brightNum.value = val; let multi = val / 50; ambientLight.intensity = 0.5 * multi; moonLight.intensity = 0.6 * multi; }
+    function updateSensitivity(val) { val = Math.max(0, Math.min(100, val)); sensSlide.value = val; sensNum.value = val; currentSensitivity = (val / 50) * 0.0022; }
+    brightSlide.addEventListener('input', e => updateBrightness(e.target.value)); brightNum.addEventListener('input', e => updateBrightness(e.target.value));
+    sensSlide.addEventListener('input', e => updateSensitivity(e.target.value)); sensNum.addEventListener('input', e => updateSensitivity(e.target.value));
+
+    let awaitingKey = null;
+    document.querySelectorAll('.key-btn.bindable').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (awaitingKey) { awaitingKey.innerText = keyBinds[awaitingKey.getAttribute('data-key')]; awaitingKey.classList.remove('active'); }
+            this.innerText = "대기 중..."; this.classList.add('active'); awaitingKey = this;
+        });
+    });
+
+    document.body.addEventListener("click", (e) => { if (!gameStarted || isDead || isSettingsOpen || e.target.closest('#settings-menu') || e.target.closest('#settings-btn')) return; requestPointer(); });
+    document.addEventListener("mousemove", (e) => {
+        if (!gameStarted || isDead || document.pointerLockElement !== document.body) return;
+        cameraYaw -= e.movementX * currentSensitivity; cameraPitch -= e.movementY * currentSensitivity; cameraPitch = THREE.MathUtils.clamp(cameraPitch, -1.2, 1.2);
+    });
+
+    window.addEventListener("keydown", (e) => {
+        if (awaitingKey) { const keyType = awaitingKey.getAttribute('data-key'); keyBinds[keyType] = e.code; awaitingKey.innerText = e.code; awaitingKey.classList.remove('active'); awaitingKey = null; e.preventDefault(); return; }
+        if (!gameStarted || isDead || isSettingsOpen) return; 
+
+        keys[e.code] = true;
+        if (e.code === keyBinds.pointer) {
+            const currentTime = Date.now();
+            if (currentTime - lastPointerKeyTime < 400) { if (document.pointerLockElement === document.body) document.exitPointerLock(); lastPointerKeyTime = 0; } 
+            else { if (document.pointerLockElement !== document.body) requestPointer(); lastPointerKeyTime = currentTime; }
+        }
+        
+        if (e.code === keyBinds.roll && !player.isRolling && !player.isJumping) { player.isRolling = true; player.rollTimer = 0.5; }
+        if (e.code === keyBinds.jump && !player.isJumping && !player.isRolling) { player.velocityY = 600; player.isJumping = true; }
+        if (e.code === keyBinds.view) { 
+            cameraMode = cameraMode === "third" ? "first" : "third"; 
+            // 1인칭 시 팔은 유지하고 머리와 몸통 숨기기
+            playerBody.headPivot.visible = (cameraMode !== "first");
+            playerBody.torsoPivot.visible = (cameraMode !== "first");
+        }
+        if (e.code === keyBinds.dig) {
+            graves.forEach(g => {
+                if (!g.dug && playerGroup.position.distanceTo(g.obj.position) < 200) {
+                    g.dug = true; g.mesh.material.color.setHex(0x222222); 
+                    if (g.content === "escape") { alert("탈출구를 찾았습니다! 생존 성공!"); location.reload(); } 
+                    else if (g.content !== "empty") addItem(g.content);
+                }
+            });
+        }
+        if (e.code.startsWith("Digit")) { let idx = parseInt(e.key) - 1; if (idx >= 0 && idx <= 8) useItem(idx); }
+    });
+    window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+
+    function useItem(index) {
+        const item = inventory[index]; if (!item) return;
+        if (item === "flashlight") { player.flashlightOn = !player.flashlightOn; flashLight.visible = player.flashlightOn; renderHotbar(); } 
+        else if (item === "holyWater") {
+            const effectGroup = new THREE.Group();
+            effectGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(400, 400, 20, 32), new THREE.MeshBasicMaterial({ color: 0xffddaa, transparent: true, opacity: 0.3 })));
+            const pGeo = new THREE.BufferGeometry(); const particleCount = isHighQuality ? 2000 : 500; const pArr = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount; i++){ let r = Math.random() * 400; let theta = Math.random() * 2 * Math.PI; pArr[i*3] = r * Math.cos(theta); pArr[i*3+1] = Math.random() * 50; pArr[i*3+2] = r * Math.sin(theta); }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pArr, 3));
+            const particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xffe688, size: isHighQuality ? 12 : 8, transparent: true, opacity: 0.9, blending: isHighQuality ? THREE.AdditiveBlending : THREE.NormalBlending }));
+            effectGroup.add(particles); effectGroup.position.copy(playerGroup.position); effectGroup.quaternion.copy(playerGroup.quaternion); effectGroup.translateZ(-300);
+            scene.add(effectGroup); holyWaterEffects.push({ obj: effectGroup, particles: particles, timer: 180 });
+            inventory[index] = null; renderHotbar();
+        } else if (item === "cross") { player.crossActiveTimer = 270; crossAura.visible = true; inventory[index] = null; renderHotbar(); }
+    }
+
+    // 사망 시 화면 처리
+    function showDeathScreen() {
+        document.exitPointerLock();
+        const ds = document.getElementById("death-screen");
+        ds.style.display = "flex";
+        ds.style.opacity = 0;
+        setTimeout(() => { ds.style.opacity = 1; }, 50);
+        setTimeout(() => {
+            document.getElementById("death-text").style.display = "block";
+            document.getElementById("restart-btn").style.display = "block";
+        }, 3000);
+    }
+
+    // 재시작 로직
+    document.getElementById("restart-btn").addEventListener("click", () => {
+        document.getElementById("death-screen").style.display = "none";
+        document.getElementById("death-text").style.display = "none";
+        document.getElementById("restart-btn").style.display = "none";
+        document.getElementById("game-ui").style.display = "none";
+        document.getElementById("start-screen").style.display = "flex";
+        
+        gameStarted = false; isDead = false; player.hp = 100;
+        playerGroup.position.set(0, 0, 0); cameraYaw = 0; cameraPitch = 0.35;
+
+        zombies.forEach(z => scene.remove(z.obj)); zombies.length = 0;
+        graves.forEach(g => scene.remove(g.obj)); graves.length = 0;
+        generateGraves();
+        
+        document.getElementById("hp-bar").style.width = "100%";
+        document.getElementById("hp-text").innerText = `100 / 100`;
+        inventory.fill(null); renderHotbar();
+        player.flashlightOn = false; flashLight.visible = false;
+        
+        const startBtn = document.getElementById('start-btn');
+        startBtn.innerText = "실 행"; startBtn.classList.remove("loading");
+    });
+
+    // --- 8. 메인 게임 루프 ---
+    const clock = new THREE.Clock(); applyQualitySettings(); generateGraves();
+
+    function animate() {
+        requestAnimationFrame(animate); const delta = clock.getDelta(); const time = clock.getElapsedTime();
+
+        if (isHighQuality) { dustParticles.rotation.y += 0.05 * delta; starMat.opacity = 0.5 + Math.sin(time * 3) * 0.4; } 
+        else { starMat.opacity = 0.8; }
+
+        if (!gameStarted) {
+            camera.position.x = Math.sin(time * 0.1) * 2000; camera.position.z = Math.cos(time * 0.1) * 2000; camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera); return;
+        }
+
+        if (isDead) { renderer.render(scene, camera); return; }
+
+        // 게임 일시정지 로직
+        if (isSettingsOpen) { 
+            renderer.render(scene, camera); 
+            return; 
+        }
+
+        player.velocityY -= 1500 * delta; playerGroup.position.y += player.velocityY * delta;
+        if (playerGroup.position.y <= 0) { playerGroup.position.y = 0; player.velocityY = 0; player.isJumping = false; }
+
+        const forwardDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+        const rightDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+        const moveVec = new THREE.Vector3();
+        
+        if (player.isRolling) {
+            player.rollTimer -= delta;
+            const rollSpeed = 1100 * delta;
+            playerGroup.position.x += forwardDir.x * rollSpeed; playerGroup.position.z += forwardDir.z * rollSpeed;
+            playerGroup.position.x = THREE.MathUtils.clamp(playerGroup.position.x, -2450, 2450); playerGroup.position.z = THREE.MathUtils.clamp(playerGroup.position.z, -2450, 2450);
+            playerGroup.rotation.y = cameraYaw;
+
+            // 세밀한 앞구르기 모션 로직 (준비 -> 구르기 -> 일어서기)
+            let t = 1 - (player.rollTimer / 0.5); // 0 ~ 1 진행도
+            if (t < 0.2) {
+                let p = t / 0.2; // 0 ~ 1
+                playerBody.leftLegPivot.rotation.x = -Math.PI/4 * p; playerBody.rightLegPivot.rotation.x = -Math.PI/4 * p; // 무릎 굽힘
+                playerBody.leftArmPivot.rotation.x = Math.PI/3 * p; playerBody.rightArmPivot.rotation.x = Math.PI/3 * p; // 팔 아래로
+                playerBody.group.position.y = -20 * p;
+                playerBody.group.rotation.x = -Math.PI/6 * p;
+            } else if (t < 0.8) {
+                let p = (t - 0.2) / 0.6; // 0 ~ 1
+                playerBody.group.rotation.x = -Math.PI/6 - (Math.PI * 2 * p); // 전체 몸통 회전
+                playerBody.group.position.y = -20 + Math.sin(p * Math.PI) * 20; // 살짝 뜸
+            } else {
+                let p = (t - 0.8) / 0.2; // 0 ~ 1
+                playerBody.group.rotation.x = 0;
+                playerBody.leftLegPivot.rotation.x = -Math.PI/4 * (1 - p); playerBody.rightLegPivot.rotation.x = -Math.PI/4 * (1 - p);
+                playerBody.leftArmPivot.rotation.x = Math.PI/3 * (1 - p); playerBody.rightArmPivot.rotation.x = Math.PI/3 * (1 - p);
+                playerBody.group.position.y = -20 * (1 - p);
+            }
+
+            if (player.rollTimer <= 0) { 
+                player.isRolling = false; playerBody.group.rotation.x = 0; playerBody.group.position.y = 0;
+                playerBody.leftLegPivot.rotation.x = 0; playerBody.rightLegPivot.rotation.x = 0;
+            }
+        } else if (!isSettingsOpen) { 
+            if (keys[keyBinds.forward]) moveVec.add(forwardDir);
+            if (keys[keyBinds.backward]) moveVec.sub(forwardDir);
+            if (keys[keyBinds.right]) moveVec.add(rightDir);
+            if (keys[keyBinds.left]) moveVec.sub(rightDir);
+
+            if (moveVec.lengthSq() > 0) {
+                moveVec.normalize().multiplyScalar(500 * delta);
+                playerGroup.position.x += moveVec.x; playerGroup.position.z += moveVec.z;
+                playerGroup.position.x = THREE.MathUtils.clamp(playerGroup.position.x, -2450, 2450); playerGroup.position.z = THREE.MathUtils.clamp(playerGroup.position.z, -2450, 2450);
+                playerGroup.rotation.y = cameraYaw;
+                player.walkT += delta * 10; const swing = Math.sin(player.walkT) * 0.6;
+                playerBody.leftLegPivot.rotation.x = swing; playerBody.rightLegPivot.rotation.x = -swing;
+                playerBody.leftArmPivot.rotation.x = -swing; playerBody.rightArmPivot.rotation.x = swing;
+            } else {
+                playerBody.leftLegPivot.rotation.x = THREE.MathUtils.lerp(playerBody.leftLegPivot.rotation.x, 0, 0.1); playerBody.rightLegPivot.rotation.x = THREE.MathUtils.lerp(playerBody.rightLegPivot.rotation.x, 0, 0.1);
+                playerBody.leftArmPivot.rotation.x = THREE.MathUtils.lerp(playerBody.leftArmPivot.rotation.x, 0, 0.1); playerBody.rightArmPivot.rotation.x = THREE.MathUtils.lerp(playerBody.rightArmPivot.rotation.x, 0, 0.1);
+            }
+        }
+
+        if (cameraMode === "first") {
+            let camY = player.isRolling ? playerGroup.position.y + 50 : playerGroup.position.y + 155;
+            camera.position.set(playerGroup.position.x, camY, playerGroup.position.z);
+            const lookDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(1, 0, 0), cameraPitch).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+            camera.lookAt(camera.position.clone().add(lookDir));
+        } else {
+            const offset = new THREE.Vector3(0, 0, 350).applyAxisAngle(new THREE.Vector3(1, 0, 0), cameraPitch).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+            offset.y += 150; camera.position.lerp(playerGroup.position.clone().add(offset), 0.15);
+            camera.lookAt(playerGroup.position.x, playerGroup.position.y + 130, playerGroup.position.z);
+        }
+
+        for (let i = holyWaterEffects.length - 1; i >= 0; i--) {
+            let hw = holyWaterEffects[i]; hw.timer--; hw.particles.position.y += 1; hw.particles.material.opacity = hw.timer / 180;
+            zombies.forEach(z => { if (z.obj.position.distanceTo(hw.obj.position) < 400) z.hp -= (50 * delta); });
+            if (hw.timer <= 0) { scene.remove(hw.obj); holyWaterEffects.splice(i, 1); }
+        }
+
+        if (player.crossActiveTimer > 0) { 
+            player.crossActiveTimer--; 
+            let pulse = 1 + Math.sin(time * 10) * 0.05; 
+            crossAura.scale.set(pulse, pulse, pulse); 
+            
+            // 십자가 활성화 중 초당 2씩 체력 회복 로직
+            if (player.hp < 100) {
+                player.hp = Math.min(100, player.hp + (2 * delta));
+                document.getElementById("hp-bar").style.width = Math.max(0, player.hp) + "%";
+                document.getElementById("hp-text").innerText = `${Math.floor(player.hp)} / 100`;
+            }
+
+            if (player.crossActiveTimer <= 0) crossAura.visible = false; 
+        }
+
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            let z = zombies[i];
+            if (z.hp <= 0) { scene.remove(z.obj); zombies.splice(i, 1); continue; }
+            if (z.state === 'emerging') { z.obj.position.y += 80 * delta; if (z.obj.position.y >= 0) { z.obj.position.y = 0; z.state = 'walking'; } continue; }
+
+            const dist = z.obj.position.distanceTo(playerGroup.position);
+            if (player.crossActiveTimer > 0 && dist < 300) { z.obj.position.lerp(playerGroup.position, -0.03); } 
+            else if (dist > 90) {
+                z.obj.lookAt(playerGroup.position.x, 0, playerGroup.position.z); z.obj.translateZ(250 * delta);
+                z.walkT += delta * 8; const zSwing = Math.sin(z.walkT) * 0.6;
+                z.leftLegPivot.rotation.x = zSwing; z.rightLegPivot.rotation.x = -zSwing; z.leftArmPivot.rotation.x = -zSwing; z.rightArmPivot.rotation.x = zSwing;
+            } else {
+                if (!isSettingsOpen) { 
+                    player.hp -= 15 * delta;
+                    document.getElementById("hp-bar").style.width = Math.max(0, player.hp) + "%";
+                    document.getElementById("hp-text").innerText = `${Math.floor(player.hp)} / 100`;
+                    
+                    if (player.hp <= 0 && !isDead) { isDead = true; showDeathScreen(); }
+                }
+            }
+        }
+        renderer.render(scene, camera);
+    }
+    setInterval(() => { if(!isSettingsOpen && gameStarted && !isDead) spawnZombies(5) }, 15000); 
+    animate();
+</script>
+</body>
+</html>
